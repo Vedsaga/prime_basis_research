@@ -1,4 +1,5 @@
 pub mod analysis;
+pub mod spectral;
 pub mod viz_common;
 
 use serde::{Deserialize, Serialize};
