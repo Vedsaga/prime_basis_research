@@ -1,169 +1,190 @@
-use prime_basis_research::{all_subset_sums, find_min_subset, find_minimal_basis, sieve};
-use itertools::Itertools;
-use serde::Serialize;
-use std::fs::File;
-use std::io::Write;
+use clap::{Parser, Subcommand};
+use prime_basis_research::PrimeDatabase;
+use std::path::PathBuf;
+use std::time::Instant;
 
-#[derive(Serialize)]
-struct DecompositionRecord {
-    index: usize,
-    prime: usize,
-    prev_prime: usize,
-    gap: usize,
-    basis_subset: Vec<usize>,
+/// Prime Basis Research — express each prime as prev_prime + sum of distinct smaller primes
+#[derive(Parser)]
+#[command(name = "prime-basis", version, about)]
+struct Cli {
+    /// Path to the cache file
+    #[arg(long, default_value = "prime_basis.bin")]
+    cache: PathBuf,
+
+    #[command(subcommand)]
+    command: Commands,
 }
 
-fn get_prime(primes: &[usize], index: usize, one_indexed: bool) -> usize {
-    let i = if one_indexed { index - 1 } else { index };
-    if i >= primes.len() {
-        panic!("Index {} out of range (have {} primes)", index, primes.len());
-    }
-    primes[i]
+#[derive(Subcommand)]
+enum Commands {
+    /// Generate the next N prime decompositions and append to cache
+    Generate {
+        /// Number of new primes to generate
+        n: usize,
+    },
+    /// Display decompositions in "p = prev + a + b + ..." format
+    Show {
+        /// Show only the last N entries (default: 20)
+        #[arg(long, default_value_t = 20)]
+        last: usize,
+
+        /// Show all entries
+        #[arg(long, default_value_t = false)]
+        all: bool,
+    },
+    /// Show cache statistics
+    Status,
 }
 
-fn decompose_prime(
-    primes: &[usize],
-    basis: &std::collections::HashSet<usize>,
-    index: usize,
-    one_indexed: bool,
-) -> (usize, usize, Vec<usize>) {
-    let i = if one_indexed { index - 1 } else { index };
-    if i == 0 {
-        panic!("No previous prime for index 1");
+fn main() {
+    let cli = Cli::parse();
+
+    match cli.command {
+        Commands::Generate { n } => cmd_generate(&cli.cache, n),
+        Commands::Show { last, all } => cmd_show(&cli.cache, last, all),
+        Commands::Status => cmd_status(&cli.cache),
     }
-    let prev = primes[i - 1];
-    let curr = primes[i];
-    let gap = curr - prev;
-    let subset = find_min_subset(gap, basis).expect("Basis should cover gap");
-    (prev, curr, subset)
 }
 
-fn main() -> std::io::Result<()> {
-    // ─── Build once ───────────────────────────────────────────────────────────────
-    let prime_limit = 10_000;
-    let primes = sieve(prime_limit);
-    
-    // Calculate gaps
-    let mut unique_gaps = std::collections::HashSet::new();
-    for i in 1..primes.len() {
-        unique_gaps.insert(primes[i] - primes[i - 1]);
+fn cmd_generate(cache_path: &PathBuf, n: usize) {
+    let mut db = PrimeDatabase::load(cache_path);
+    let before_count = db.count();
+    let before_last = db.last_prime();
+
+    println!(
+        "Cache loaded: {} primes (largest: {})",
+        before_count, before_last
+    );
+    println!("Generating {} new prime decompositions...", n);
+
+    let start = Instant::now();
+    db.generate(n);
+    let elapsed = start.elapsed();
+
+    println!(
+        "Done in {:.2?}. {} → {} primes (largest: {})",
+        elapsed,
+        before_count,
+        db.count(),
+        db.last_prime()
+    );
+
+    // Print the newly generated decompositions (up to 20 for readability)
+    let show_count = n.min(20);
+    let start_idx = db.decompositions.len() - n;
+    println!("\nFirst {} of {} new decompositions:", show_count, n);
+    for d in db.decompositions[start_idx..start_idx + show_count].iter() {
+        println!("  {}", d.display());
     }
-    let unique_gaps_vec: Vec<usize> = unique_gaps.into_iter().sorted().collect();
-    
-    // Find Basis
-    let basis_vec = find_minimal_basis(&unique_gaps_vec);
-    let basis_set: std::collections::HashSet<usize> = basis_vec.iter().cloned().collect();
-
-    println!("============================================================");
-    println!("  PRIME BASIS RESEARCH TOOL (Rust Port)");
-    println!("  Primes up to: {:?}  |  Count: {}", prime_limit, primes.len()); // Format with separator manually or crate if needed, simple print here.
-    println!("  Basis: {:?}", basis_vec);
-    
-    // Calculate max gap covered
-    let all_sums = all_subset_sums(&basis_vec);
-    let max_gap_covered = all_sums.last().unwrap_or(&0);
-    println!("  Basis size: {}  |  Max gap covered: {}", basis_vec.len(), max_gap_covered);
-    println!("============================================================");
-
-    // ─── Demo: index lookup ───────────────────────────────────────────────────────
-    println!("\n── Lookup by index ──");
-    for idx in [1, 2, 5, 10, 100, 1000] {
-        let p = get_prime(&primes, idx, true);
-        println!("  prime({:>5}) = {}", idx, p);
-    }
-
-    // ─── Demo: decompose by index ─────────────────────────────────────────────────
-    println!("\n── Decomposition by index ──");
-    let mut decomposition_records = Vec::new();
-
-    // Start from idx 2 (first prime is 2, second is 3, gap starts there)
-    // The Python script decomposes loop range(2, 20) -> indices 2..19 (primes at index 2..19, i.e., 3rd prime onwards?)
-    // Wait, Python `range(2, 20)` iterates 2, 3, ..., 19.
-    // `get_prime(primes, index, one_indexed=True)`
-    // idx=2 -> 2nd prime (3). Prev is 1st prime (2). Gap 1.
-    for idx in 2..20 {
-        let (prev, curr, subset) = decompose_prime(&primes, &basis_set, idx, true);
-        let parts = subset.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(" + ");
-        println!("  prime({:>3}) = {:>6} = {:>6} + ({})", idx, curr, prev, parts);
-        
-        decomposition_records.push(DecompositionRecord {
-            index: idx,
-            prime: curr,
-            prev_prime: prev,
-            gap: curr - prev,
-            basis_subset: subset,
-        });
+    if n > show_count {
+        println!("  ... ({} more, use `show` command to view)", n - show_count);
     }
 
-    // Save ALL decompositions to JSON for graphing (up to limit)
-    // Not just the demo ones, let's do all up to primes.len()
-    println!("\nGenerating full decomposition data...");
-    let mut full_records = Vec::new();
-    for idx in 2..primes.len() + 1 { // 1-based index up to count
-         let (prev, curr, subset) = decompose_prime(&primes, &basis_set, idx, true);
-         full_records.push(DecompositionRecord {
-            index: idx,
-            prime: curr,
-            prev_prime: prev,
-            gap: curr - prev,
-            basis_subset: subset,
-        });
+    db.save(cache_path);
+    println!("\nSaved to {:?}", cache_path);
+}
+
+fn cmd_show(cache_path: &PathBuf, last: usize, all: bool) {
+    let db = PrimeDatabase::load(cache_path);
+
+    if db.decompositions.is_empty() {
+        println!("No decompositions in cache. Run `generate` first.");
+        return;
     }
 
-    let json_file_path = "prime_decompositions.json";
-    let file = File::create(json_file_path)?;
-    serde_json::to_writer_pretty(file, &full_records)?;
-    println!("  Saved {} records to {}", full_records.len(), json_file_path);
+    let entries = if all {
+        &db.decompositions[..]
+    } else {
+        let start = db.decompositions.len().saturating_sub(last);
+        &db.decompositions[start..]
+    };
 
+    let total = db.decompositions.len();
+    if !all {
+        println!(
+            "Showing last {} of {} decompositions:\n",
+            entries.len(),
+            total
+        );
+    } else {
+        println!("All {} decompositions:\n", total);
+    }
 
-    // ─── Growth table ─────────────────────────────────────────────────────────────
-    println!("\n── Basis growth with range ──");
-    println!("  {:>8}  {:>8}  {:>7}  {:<40}  Size", "Limit", "#Primes", "MaxGap", "Basis");
-    println!("  {:->8}  {:->8}  {:->7}  {:->40}  ----", "", "", "", "");
-    
-    for limit in [100, 500, 1000, 5000, 10000, 50000, 100000] {
-        let p = sieve(limit);
-        if p.len() < 2 { continue; }
-        
-        let mut g_set = std::collections::HashSet::new();
-        for i in 1..p.len() {
-            g_set.insert(p[i] - p[i-1]);
+    for d in entries {
+        println!("  {}", d.display());
+    }
+}
+
+fn cmd_status(cache_path: &PathBuf) {
+    if !cache_path.exists() {
+        println!("No cache file found at {:?}", cache_path);
+        println!("Run `generate <N>` to create one.");
+        return;
+    }
+
+    let db = PrimeDatabase::load(cache_path);
+    let file_size = std::fs::metadata(cache_path)
+        .map(|m| m.len())
+        .unwrap_or(0);
+
+    println!("╔══════════════════════════════════════════╗");
+    println!("║       Prime Basis Research — Status      ║");
+    println!("╠══════════════════════════════════════════╣");
+    println!(
+        "║  Total primes:    {:>20}  ║",
+        format_number(db.count() as u64)
+    );
+    println!(
+        "║  Decompositions:  {:>20}  ║",
+        format_number(db.decompositions.len() as u64)
+    );
+    println!(
+        "║  Largest prime:   {:>20}  ║",
+        format_number(db.last_prime())
+    );
+    println!(
+        "║  Cache file size: {:>20}  ║",
+        format_bytes(file_size)
+    );
+    println!("╚══════════════════════════════════════════╝");
+
+    // Show some gap statistics
+    if !db.decompositions.is_empty() {
+        let max_gap = db.decompositions.iter().map(|d| d.gap).max().unwrap_or(0);
+        let avg_gap = db.decompositions.iter().map(|d| d.gap).sum::<u64>() as f64
+            / db.decompositions.len() as f64;
+        let max_components = db
+            .decompositions
+            .iter()
+            .map(|d| d.components.len())
+            .max()
+            .unwrap_or(0);
+
+        println!("\n  Gap statistics:");
+        println!("    Max gap:          {}", max_gap);
+        println!("    Avg gap:          {:.1}", avg_gap);
+        println!("    Max components:   {} (for a single gap)", max_components);
+    }
+}
+
+fn format_number(n: u64) -> String {
+    let s = n.to_string();
+    let mut result = String::new();
+    for (i, c) in s.chars().rev().enumerate() {
+        if i > 0 && i % 3 == 0 {
+            result.push(',');
         }
-        let g: Vec<usize> = g_set.into_iter().sorted().collect();
-        let b = find_minimal_basis(&g);
-        
-        let max_g = g.last().unwrap_or(&0);
-        // Format basis vector as string
-        let b_str = format!("{:?}", b);
-        
-        println!("  {:>8}  {:>8}  {:>7}  {:<40}  {}", limit, p.len(), max_g, b_str, b.len());
+        result.push(c);
     }
+    result.chars().rev().collect()
+}
 
-    // ─── Observation: powers of 2 ────────────────────────────────────────────────
-    println!("\n── Alternative basis: Powers of 2 ──");
-    println!("  Powers of 2 as basis give ALL subset sums without repetition:");
-    
-    let pow2_bases = vec![
-        (4, vec![1, 2, 4, 8]),
-        (5, vec![1, 2, 4, 8, 16]),
-        (6, vec![1, 2, 4, 8, 16, 32]),
-    ];
-
-    for (size, pb) in pow2_bases {
-        let sums = all_subset_sums(&pb);
-        let max_s = sums.last().unwrap_or(&0);
-        println!("  {:?}  →  covers 1..{}  (size {})", pb, max_s, size);
+fn format_bytes(bytes: u64) -> String {
+    if bytes < 1024 {
+        format!("{} B", bytes)
+    } else if bytes < 1024 * 1024 {
+        format!("{:.1} KB", bytes as f64 / 1024.0)
+    } else {
+        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
     }
-    
-    println!("\n  Comparison for max gap (primes up to 10,000):");
-    // Recalculate basis for current `basis_vec` max coverage
-    let current_max_gap = all_sums.last().unwrap_or(&0);
-    println!("  Greedy consecutive basis: {:?} (size {}) covers 1..{}", basis_vec, basis_vec.len(), current_max_gap);
-    
-    let pow2_for36 = vec![1, 2, 4, 8, 16, 32];
-    let p2_sums = all_subset_sums(&pow2_for36);
-    println!("  Powers-of-2 basis:        {:?} (size {}) covers 1..{}", pow2_for36, pow2_for36.len(), p2_sums.last().unwrap_or(&0));
-    println!("\n  → Powers of 2 use FEWER elements for the same max gap coverage!");
-
-    Ok(())
 }
