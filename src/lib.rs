@@ -1,4 +1,5 @@
 pub mod analysis;
+pub mod viz_common;
 
 use serde::{Deserialize, Serialize};
 use std::fs;
