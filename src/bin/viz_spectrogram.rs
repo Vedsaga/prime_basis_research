@@ -14,6 +14,7 @@ struct SpectrogramApp {
     height: usize,
     width: usize,
     image_data: ColorImage,
+    show_help: bool,
 }
 
 impl SpectrogramApp {
@@ -65,6 +66,7 @@ impl SpectrogramApp {
             height: actual_rows,
             width,
             image_data: image,
+            show_help: false,
         }
     }
 }
@@ -80,13 +82,26 @@ impl eframe::App for SpectrogramApp {
         }
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Comb Spectrogram");
-            ui.label(format!("Top {} bases (X axis) vs Time (Y axis, downsampled to {})", self.width, self.height));
+            ui.horizontal(|ui| {
+                ui.heading("Comb Spectrogram");
+                viz_common::show_help_panel(
+                    ui,
+                    &mut self.show_help,
+                    "Spectrogram Help",
+                    "Base Prime usage (X) over Time (Y).",
+                    &[
+                        ("Vertical Bands", "A base prime is used consistently (workhorse)."),
+                        ("Horizontal Gaps", "Ranges where few base primes are needed."),
+                        ("Drift", "Active basis changes over time."),
+                    ]
+                );
+            });
+            ui.label(format!("Top {} bases (X) vs Time (Y, {} rows)", self.width, self.height));
 
             let plot = Plot::new("spectrogram_plot")
                 .show_axes([false, true])
                 .show_grid([false, false])
-                .data_aspect(1.0); // Maintain aspect ratio if desired, or allow stretch
+                .data_aspect(1.0);
 
             plot.show(ui, |plot_ui| {
                 if let Some(tex) = &self.texture {

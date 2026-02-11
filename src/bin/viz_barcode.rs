@@ -15,6 +15,7 @@ struct BarcodeApp {
     height: usize,
     width: usize,
     image_data: ColorImage,
+    show_help: bool,
 }
 
 impl BarcodeApp {
@@ -85,6 +86,7 @@ impl BarcodeApp {
             height: actual_rows,
             width,
             image_data: image,
+            show_help: false,
         }
     }
 }
@@ -100,7 +102,20 @@ impl eframe::App for BarcodeApp {
         }
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Spectral Barcode");
+            ui.horizontal(|ui| {
+                ui.heading("Spectral Barcode");
+                viz_common::show_help_panel(
+                    ui,
+                    &mut self.show_help,
+                    "Barcode Help",
+                    "Discrete usage stripes. Dark=Used, Light=Unused.",
+                    &[
+                        ("Fingerprint", "Unique signature of the prime sequence."),
+                        ("Periodicity", "Repeating blocks in vertical direction."),
+                    ]
+                );
+            });
+            
             ui.label(format!(
                 "Top {} bases (X) vs Time (Y, {} rows)",
                 self.width, self.height

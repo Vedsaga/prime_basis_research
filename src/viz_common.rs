@@ -200,3 +200,36 @@ mod tests {
         }
     }
 }
+
+/// Renders a collateral help panel with a title, description, and key insights.
+/// Returns true if the panel is open.
+pub fn show_help_panel(
+    ui: &mut egui::Ui,
+    open: &mut bool,
+    title: &str,
+    description: &str,
+    key_insights: &[(&str, &str)],
+) {
+    if !*open {
+        if ui.button("❓ Help").clicked() {
+            *open = true;
+        }
+        return;
+    }
+
+    egui::Window::new(title)
+        .open(open)
+        .default_size([400.0, 500.0])
+        .vscroll(true)
+        .show(ui.ctx(), |ui| {
+            ui.label(egui::RichText::new(description).size(14.0));
+            ui.add(egui::Separator::default());
+            ui.heading("What to look for:");
+            
+            for (insight_title, insight_text) in key_insights {
+                ui.add_space(5.0);
+                ui.label(egui::RichText::new(format!("• {}", insight_title)).strong());
+                ui.label(*insight_text);
+            }
+        });
+}

@@ -17,6 +17,7 @@ struct PcaApp {
     explained_variance: Vec<f64>,
     
     view_mode: usize, // 0=1v2, 1=1v3, 2=2v3
+    show_help: bool,
 }
 
 impl PcaApp {
@@ -54,6 +55,7 @@ impl PcaApp {
             points_pc23: p23,
             explained_variance: pca.explained_variance_ratio,
             view_mode: 0,
+            show_help: false,
         }
     }
 }
@@ -68,6 +70,18 @@ impl eframe::App for PcaApp {
                 ui.radio_value(&mut self.view_mode, 0, "PC1 vs PC2");
                 ui.radio_value(&mut self.view_mode, 1, "PC1 vs PC3");
                 ui.radio_value(&mut self.view_mode, 2, "PC2 vs PC3");
+                
+                viz_common::show_help_panel(
+                    ui,
+                    &mut self.show_help,
+                    "PCA Help",
+                    "High-dim basis space projected to 2D.",
+                    &[
+                        ("Clusters", "Primes sharing structural similarities."),
+                        ("Manifolds", "Curves suggest primes live on a lower-dim shape."),
+                        ("Diffuseness", "Random cloud implies no obvious correlation."),
+                    ]
+                );
                 
                 if !self.explained_variance.is_empty() {
                     ui.separator();

@@ -30,6 +30,7 @@ struct ResonanceApp {
     point_size_scale: f64,
     /// Max rendered points (downsampling).
     max_points: usize,
+    show_help: bool,
 }
 
 impl ResonanceApp {
@@ -50,6 +51,7 @@ impl ResonanceApp {
             speed: 0.1,
             point_size_scale: 1.0,
             max_points: 10_000,
+            show_help: false,
         }
     }
 
@@ -135,6 +137,18 @@ impl eframe::App for ResonanceApp {
                 ui.separator();
                 ui.label("Size:");
                 ui.add(egui::Slider::new(&mut self.point_size_scale, 0.5..=5.0));
+                
+                viz_common::show_help_panel(
+                    ui,
+                    &mut self.show_help,
+                    "Resonance Help",
+                    "Animates the modulus sweep to find geometric order.",
+                    &[
+                        ("Resonance Locks", "Chaotic cloud snaps into a star pattern."),
+                        ("Primorials", "Locks occur locally at 6, 30, 210."),
+                        ("Symmetry", "Reveals multiplicative structure underlying primes."),
+                    ]
+                );
             });
 
             // --- Plot ---

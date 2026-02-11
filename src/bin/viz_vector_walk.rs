@@ -31,6 +31,7 @@ struct VectorWalkApp {
     yaw: f64,
     pitch: f64,
     zoom: f64,
+    show_help: bool,
 }
 
 impl VectorWalkApp {
@@ -67,6 +68,7 @@ impl VectorWalkApp {
             yaw: 0.5,
             pitch: 0.3,
             zoom: 1.0,
+            show_help: false,
         }
     }
 
@@ -128,6 +130,18 @@ impl eframe::App for VectorWalkApp {
                 ui.label("Zoom:");
                 ui.add(egui::Slider::new(&mut self.zoom, 0.01..=10.0).logarithmic(true));
                 ui.label("(scroll to zoom, drag to rotate)");
+                
+                viz_common::show_help_panel(
+                    ui,
+                    &mut self.show_help,
+                    "Vector Walk Help",
+                    "Cumulative 3D trajectory through basis-space.",
+                    &[
+                        ("Drift Direction", "Which base primes dominate the walk."),
+                        ("Straight Path", "Consistent decomposition structure."),
+                        ("Kinks/Turns", "Structural transitions in the prime sequence."),
+                    ]
+                );
             });
         });
 

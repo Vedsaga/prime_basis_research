@@ -15,6 +15,7 @@ struct DiffractionApp {
     fft_line: Vec<[f64; 2]>,
     peak_points: Vec<[f64; 2]>,
     stats_msg: String,
+    show_help: bool,
 }
 
 impl DiffractionApp {
@@ -68,6 +69,7 @@ impl DiffractionApp {
             fft_line,
             peak_points,
             stats_msg,
+            show_help: false,
         }
     }
 }
@@ -75,7 +77,20 @@ impl DiffractionApp {
 impl eframe::App for DiffractionApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Hyper-Crystal Diffraction");
+            ui.horizontal(|ui| {
+                ui.heading("Hyper-Crystal Diffraction");
+                viz_common::show_help_panel(
+                    ui,
+                    &mut self.show_help,
+                    "Diffraction Help",
+                    "FFT of composite signal built from decomposition frequencies.",
+                    &[
+                        ("Sharp Peaks", "Real periodic structure in component usage."),
+                        ("Broad Hump", "Noise or weak quasi-periodicity."),
+                        ("Peak Frequency", "Corresponds to a recurring pattern length."),
+                    ]
+                );
+            });
             ui.label(&self.stats_msg);
             ui.separator();
 

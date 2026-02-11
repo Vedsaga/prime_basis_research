@@ -33,6 +33,7 @@ struct NetworkApp {
     paused: bool,
     hovered_node: Option<usize>,
     dragged_node: Option<usize>,
+    show_help: bool,
 }
 
 impl NetworkApp {
@@ -51,6 +52,7 @@ impl NetworkApp {
             paused: false,
             hovered_node: None,
             dragged_node: None,
+            show_help: false,
         };
         app.rebuild(n_nodes);
         app
@@ -212,6 +214,18 @@ impl eframe::App for NetworkApp {
                 if ui.add(egui::Slider::new(&mut n, 2..=max_n)).changed() {
                     self.rebuild(n);
                 }
+                
+                viz_common::show_help_panel(
+                    ui,
+                    &mut self.show_help,
+                    "Network Help",
+                    "Force-directed graph of base prime co-occurrence.",
+                    &[
+                        ("Hub Nodes", "Large nodes are the most-used base primes."),
+                        ("Thick Edges", "Frequently co-occurring prime pairs."),
+                        ("Clusters", "Groups of primes that tend to appear together."),
+                    ]
+                );
             });
         });
 

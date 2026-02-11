@@ -29,6 +29,7 @@ struct PhaseSpaceApp {
     pitch: f64,
     scale: f64,
     color_by_idx: bool,
+    show_help: bool,
 }
 
 impl PhaseSpaceApp {
@@ -82,6 +83,7 @@ impl PhaseSpaceApp {
             pitch: 0.3,
             scale: 1.0,
             color_by_idx: false,
+            show_help: false,
         }
     }
 
@@ -184,6 +186,18 @@ impl eframe::App for PhaseSpaceApp {
                     ));
                 }
                 ui.checkbox(&mut self.color_by_idx, "Color by Index");
+                
+                viz_common::show_help_panel(
+                    ui, 
+                    &mut self.show_help,
+                    "Phase Space Help",
+                    "Visualizes the relationship between Gap Size, Complexity (Component Count), and Next Gap.",
+                    &[
+                        ("Clusters", "Small gaps often cluster with low component counts."),
+                        ("Stratification", "Horizontal layers indicate discrete complexity levels."),
+                        ("Diagonal (3D)", "Correlation between a gap and the next gap."),
+                    ]
+                );
             });
         });
 

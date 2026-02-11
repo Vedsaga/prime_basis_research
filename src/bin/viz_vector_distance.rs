@@ -10,8 +10,9 @@ use prime_basis_research::analysis::successive_distances;
 use prime_basis_research::viz_common::{self, running_average};
 
 struct VectorDistanceApp {
-    line_data: Vec<[f64; 2]>,
-    avg_data: Vec<[f64; 2]>,
+    points: Vec<[f64; 2]>, // (index, distance)
+    window_size: usize,
+    show_help: bool,
     stats_msg: String,
 }
 
@@ -29,13 +30,13 @@ impl VectorDistanceApp {
         // distances[i] corresponds to dist(decomp[i], decomp[i+1])
         // It has length N-1
         
-        let mut line_data = Vec::with_capacity(distances.len());
+        let mut points = Vec::with_capacity(distances.len());
         let mut sum_dist = 0.0;
         let mut min_dist = f64::MAX;
         let mut max_dist = f64::MIN;
         
         for (i, &d) in distances.iter().enumerate() {
-            line_data.push([i as f64, d]);
+            points.push([i as f64, d]);
             sum_dist += d;
             if d < min_dist { min_dist = d; }
             if d > max_dist { max_dist = d; }
@@ -43,12 +44,10 @@ impl VectorDistanceApp {
         
         let mean_dist = if !distances.is_empty() { sum_dist / distances.len() as f64 } else { 0.0 };
         
-        // Running average
-        let avg_data = running_average(distances.iter().cloned(), distances.len(), distances.len() / 200);
-
         Self {
-            line_data,
-            avg_data,
+            points,
+            window_size: 100,
+            show_help: false,
             stats_msg: format!("Mean Distance: {:.4} | Range: [{:.4}, {:.4}]", mean_dist, min_dist, max_dist),
         }
     }
@@ -60,18 +59,40 @@ impl eframe::App for VectorDistanceApp {
             ui.heading("Successive Vector Distance");
             ui.label(&self.stats_msg);
 
-            let plot = Plot::new("vector_dist_plot")
+            ui.horizontal(|ui| {
+                ui.label("Smoothing Window:");
+                ui.add(egui::Slider::new(&mut self.window_size, 1..=5000).logarithmic(true));
+                
+                viz_common::show_help_panel(
+                    ui,
+                    &mut self.show_help,
+                    "Vector Distance Help",
+                    "Euclidean distance between consecutive basis vectors.",
+                    &[
+                        ("Low Values", "Structural stability; next prime is similar."),
+                        ("Spikes", "Sudden structural shifts (phase transitions)."),
+                        ("Trend Up", "Step size in basis space is growing."),
+                    ]
+                );
+            });
+
+            let plot = Plot::new("distance_plot")
                 .legend(Legend::default())
                 .include_y(0.0);
 
             plot.show(ui, |plot_ui| {
-                // Raw data is noisy, maybe show with low alpha
-                plot_ui.line(Line::new(PlotPoints::new(self.line_data.clone()))
+                // Raw data is noisy, show with low alpha
+                plot_ui.line(Line::new(PlotPoints::new(self.points.clone()))
                     .name("Distance")
                     .color(egui::Color32::from_rgba_unmultiplied(100, 100, 100, 50)));
                 
-                // Trend
-                plot_ui.line(Line::new(PlotPoints::new(self.avg_data.clone()))
+                // Trend (running average computed from current window_size)
+                let avg_data = running_average(
+                    self.points.iter().map(|p| p[1]),
+                    self.points.len(),
+                    self.window_size,
+                );
+                plot_ui.line(Line::new(PlotPoints::new(avg_data))
                     .name("Trend")
                     .color(egui::Color32::RED)
                     .width(2.0));

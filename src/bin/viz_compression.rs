@@ -15,6 +15,7 @@ struct CompressionApp {
     ratio_lines: Vec<[f64; 2]>, // (index, bits/log2(prime))
     
     avg_ratio_line: Vec<[f64; 2]>,
+    show_help: bool,
     
     stats_msg: String,
 }
@@ -59,6 +60,7 @@ impl CompressionApp {
             log_lines: logs_vec,
             ratio_lines: ratio_vec,
             avg_ratio_line,
+            show_help: false,
             stats_msg: format!("Avg Ratio: {:.3} | Min: {:.3} | Max: {:.3}", avg_ratio, min_ratio, max_ratio),
         }
     }
@@ -67,7 +69,20 @@ impl CompressionApp {
 impl eframe::App for CompressionApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Compression Efficiency");
+            ui.horizontal(|ui| {
+                ui.heading("Compression Efficiency");
+                viz_common::show_help_panel(
+                    ui,
+                    &mut self.show_help,
+                    "Compression Help",
+                    "Compares decomposition bit cost vs log₂(prime).",
+                    &[
+                        ("Ratio < 1", "Basis method compresses better than raw prime."),
+                        ("Ratio ≈ 1", "No compression advantage."),
+                        ("Trend", "Rising ratio means compression degrades for larger primes."),
+                    ]
+                );
+            });
             ui.label(&self.stats_msg);
 
             ui.separator();

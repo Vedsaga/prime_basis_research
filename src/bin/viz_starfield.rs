@@ -18,6 +18,7 @@ struct StarfieldApp {
     modulus: u64,
     point_size_scale: f64,
     max_points: usize,
+    show_help: bool,
 }
 
 impl StarfieldApp {
@@ -33,6 +34,7 @@ impl StarfieldApp {
             modulus: 6, // Default to primorial 6
             point_size_scale: 1.0,
             max_points: 10_000,
+            show_help: false,
         }
     }
 }
@@ -53,6 +55,18 @@ impl eframe::App for StarfieldApp {
                 ui.separator();
                 ui.label("Size:");
                 ui.add(egui::Slider::new(&mut self.point_size_scale, 0.5..=5.0));
+
+                viz_common::show_help_panel(
+                    ui,
+                    &mut self.show_help,
+                    "Starfield Help",
+                    "Polar plot of primes modulo M. Radius = Index, Angle = Residue.",
+                    &[
+                        ("Spokes/Rays", "Primes prefer certain residues (e.g. coprime to M)."),
+                        ("Empty Sectors", "Residues that primes never occupy (factors of M)."),
+                        ("Spirals", "Drift in residue classes over time."),
+                    ]
+                );
             });
 
             let plot = Plot::new("starfield_plot")
