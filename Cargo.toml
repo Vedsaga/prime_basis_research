@@ -12,6 +12,7 @@ eframe = "0.31"
 egui_plot = "0.31"
 rustfft = "6"
 nalgebra = "0.33"
+rand = "0.8"
 
 [dev-dependencies]
 proptest = "1"

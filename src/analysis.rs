@@ -838,6 +838,28 @@ pub fn co_occurrence_matrix(
     matrix
 }
 
+// ─── Modular Arithmetic Analysis ────────────────────────────────────────────
+
+/// Compute the distribution of prime gaps modulo a given modulus (e.g., 6 or 30).
+/// Returns a map of residue -> count.
+pub fn gap_mod_counts(decompositions: &[PrimeDecomposition], modulus: u64) -> HashMap<u64, usize> {
+    let mut counts = HashMap::new();
+    for d in decompositions {
+        *counts.entry(d.gap % modulus).or_insert(0) += 1;
+    }
+    counts
+}
+
+/// Compute the distribution of prime residues modulo a given modulus.
+/// Returns a map of residue -> count.
+pub fn residue_distribution(decompositions: &[PrimeDecomposition], modulus: u64) -> HashMap<u64, usize> {
+    let mut counts = HashMap::new();
+    for d in decompositions {
+        *counts.entry(d.prime % modulus).or_insert(0) += 1;
+    }
+    counts
+}
+
 // ─── Trajectory ─────────────────────────────────────────────────────────────
 
 /// Compute cumulative 3D trajectory from decompositions and axis base prime mapping.

@@ -2600,6 +2600,7 @@ dependencies = [
  "egui_plot",
  "nalgebra",
  "proptest",
+ "rand 0.8.5",
  "rustfft",
  "serde",
  "serde_json",

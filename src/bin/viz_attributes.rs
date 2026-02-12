@@ -8,6 +8,10 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
+use rustfft::{FftPlanner, num_complex::Complex};
+use rand::seq::SliceRandom;
+use rand::Rng;
+use rand::thread_rng;
 
 // const WINDOW_SIZE: usize = 1000;
 
@@ -90,6 +94,28 @@ struct Stats {
     
     bit_autocorrelation: Vec<(usize, f64)>,
     prob_bit1_given_gap: Vec<(u64, f64, usize)>, // (gap, prob, count)
+
+    // Spectral Analysis
+    spectral_original: SpectralStats,
+    spectral_shuffled: SpectralStats,
+    spectral_synthetic: SpectralStats,
+}
+
+#[derive(Clone)]
+struct SpectralStats {
+    spectrum: Vec<f64>, // First half (Nyquist)
+    mean_power: f64,
+    max_power: f64,
+    peak_ratio: f64,
+    peak_freq_idx: usize,
+    peak_freq: f64,
+}
+
+struct SpectralLineData {
+    points: Vec<[f64; 2]>,
+    name: String,
+    color: egui::Color32,
+    dashed: bool,
 }
 
 enum AppState {
@@ -128,6 +154,11 @@ struct LoadedState {
     win_attr: Attribute,
     win_size: usize,
     win_cache: Option<(Attribute, usize, Vec<[f64; 2]>, String)>, // Points + Stats Text
+
+    // Spectral View
+    spectral_show_shuffled: bool,
+    spectral_show_synthetic: bool,
+    spectral_cache: Option<(bool, bool, Vec<SpectralLineData>)>,
 }
 
 #[derive(PartialEq, Eq)]
@@ -137,6 +168,7 @@ enum Tab {
     Histogram,
     Windowed,
     Stats,
+    Spectral,
     Report,
 }
 
@@ -326,6 +358,27 @@ fn load_data(tx: Sender<Result<LoadedState, String>>) {
         .collect();
     prob_bit1_given_gap.sort_by_key(|k| k.0);
 
+    // ─── Spectral Analysis ───
+    // 1. Prepare centered signal
+    let mean_bit = ones as f64 / n;
+    let signal: Vec<f64> = bits_raw.iter().map(|&b| b as f64 - mean_bit).collect();
+    
+    // 2. Compute Original
+    let spec_orig = compute_spectral(&signal);
+    
+    // 3. Compute Shuffled Baseline
+    let mut rng = thread_rng();
+    let mut shuffled_signal = signal.clone();
+    shuffled_signal.shuffle(&mut rng);
+    let spec_shuf = compute_spectral(&shuffled_signal);
+    
+    // 4. Compute Synthetic IID Baseline
+    // Generate random 0/1 with same p, then center
+    let synthetic_signal: Vec<f64> = (0..bits_raw.len())
+        .map(|_| if rng.gen::<f64>() < mean_bit { 1.0 } else { 0.0 } - mean_bit)
+        .collect();
+    let spec_synth = compute_spectral(&synthetic_signal);
+
     let stats = Stats {
         total_entries: entries.len(),
         ones_count: ones,
@@ -353,6 +406,9 @@ fn load_data(tx: Sender<Result<LoadedState, String>>) {
         tail_sum_kurt: ts_kurt,
         bit_autocorrelation: bit_ac,
         prob_bit1_given_gap: prob_bit1_given_gap,
+        spectral_original: spec_orig,
+        spectral_shuffled: spec_shuf,
+        spectral_synthetic: spec_synth,
     };
     
     // Generate initial report
@@ -378,6 +434,9 @@ fn load_data(tx: Sender<Result<LoadedState, String>>) {
         win_attr: Attribute::Bit,
         win_size: 1000,
         win_cache: None,
+        spectral_show_shuffled: false,
+        spectral_show_synthetic: false,
+        spectral_cache: None,
     })).ok();
 }
 
@@ -427,6 +486,7 @@ fn render_app(ui: &mut egui::Ui, data: &mut LoadedState) {
         ui.selectable_value(&mut data.selected_tab, Tab::Histogram, "Histogram");
         ui.selectable_value(&mut data.selected_tab, Tab::Windowed, "Windowed");
         ui.selectable_value(&mut data.selected_tab, Tab::Stats, "Stats");
+        ui.selectable_value(&mut data.selected_tab, Tab::Spectral, "Spectral (FFT)");
         ui.selectable_value(&mut data.selected_tab, Tab::Report, "📄 Report");
     });
     ui.separator();
@@ -437,6 +497,7 @@ fn render_app(ui: &mut egui::Ui, data: &mut LoadedState) {
         Tab::Histogram => render_histogram(ui, data),
         Tab::Windowed => render_windowed(ui, data),
         Tab::Stats => render_stats(ui, data),
+        Tab::Spectral => render_spectral(ui, data),
         Tab::Report => render_report(ui, data),
     }
 }
@@ -693,6 +754,96 @@ fn render_windowed(ui: &mut egui::Ui, data: &mut LoadedState) {
         });
 }
 
+fn render_spectral(ui: &mut egui::Ui, data: &mut LoadedState) {
+    ui.horizontal(|ui| {
+        ui.label("Baselines:");
+        let mut changed = false;
+        if ui.checkbox(&mut data.spectral_show_shuffled, "Show Shuffled Baseline").changed() { changed = true; }
+        if ui.checkbox(&mut data.spectral_show_synthetic, "Show Synthetic IID Baseline").changed() { changed = true; }
+        
+        if changed {
+            data.spectral_cache = None;
+        }
+    });
+
+    if data.spectral_cache.is_none() {
+        let make_line = |spectrum: &[f64], name: &str, color: egui::Color32, dashed: bool| -> SpectralLineData {
+            let points: Vec<[f64; 2]> = spectrum.iter().enumerate()
+                .map(|(i, &p)| {
+                    let freq = (i + 1) as f64 / (spectrum.len() * 2) as f64; // roughly freq = bin / N
+                    [freq, p]
+                })
+                .collect();
+            SpectralLineData { points, name: name.to_string(), color, dashed }
+        };
+
+        let mut lines = Vec::new();
+
+        // 1. Original
+        lines.push(make_line(&data.stats.spectral_original.spectrum, "Original Bit Sequence", egui::Color32::from_rgb(100, 200, 255), false));
+
+        // 2. Shuffled
+        if data.spectral_show_shuffled {
+             lines.push(make_line(&data.stats.spectral_shuffled.spectrum, "Shuffled Baseline", egui::Color32::from_rgb(150, 150, 150), true));
+        }
+
+        // 3. Synthetic
+        if data.spectral_show_synthetic {
+             lines.push(make_line(&data.stats.spectral_synthetic.spectrum, "Synthetic IID Baseline", egui::Color32::from_rgb(255, 100, 100), true));
+        }
+        
+        data.spectral_cache = Some((data.spectral_show_shuffled, data.spectral_show_synthetic, lines));
+    }
+
+    let (_, _, lines_data) = data.spectral_cache.as_ref().unwrap();
+    // let lines_cloned = lines.clone(); 
+
+    // Show Interpretive Stats in a side panel or top area
+    ui.horizontal(|ui| {
+         ui.group(|ui| {
+             ui.vertical(|ui| {
+                 ui.heading("Original Signal Stats");
+                 let s = &data.stats.spectral_original;
+                 ui.label(format!("Mean Power: {:.6}", s.mean_power));
+                 ui.label(format!("Max Power: {:.6}", s.max_power));
+                 ui.label(format!("Peak/Mean: {:.2}", s.peak_ratio));
+                 ui.label(format!("Peak Freq: {:.4}", s.peak_freq));
+             });
+         });
+         
+         if data.spectral_show_shuffled {
+            ui.group(|ui| {
+                 ui.vertical(|ui| {
+                     ui.heading("Shuffled Baseline");
+                     let s = &data.stats.spectral_shuffled;
+                     ui.label(format!("Mean Power: {:.6}", s.mean_power));
+                     ui.label(format!("Max Power: {:.6}", s.max_power));
+                     ui.label(format!("Peak/Mean: {:.2}", s.peak_ratio));
+                 });
+             });
+         }
+    });
+
+    ui.separator();
+
+    Plot::new("spectral_plot")
+        .x_axis_label("Frequency (1/Index)")
+        .y_axis_label("Spectral Power")
+        .legend(Legend::default())
+        .show(ui, |plot_ui| {
+            for line_data in lines_data {
+                let mut line = Line::new(line_data.points.clone())
+                    .name(&line_data.name)
+                    .color(line_data.color);
+                
+                if line_data.dashed {
+                    line = line.style(egui_plot::LineStyle::Dashed { length: 10.0 });
+                }
+                
+                plot_ui.line(line);
+            }
+        });
+}    
 fn render_stats(ui: &mut egui::Ui, data: &mut LoadedState) {
     ui.heading("Statistical Summary");
     
@@ -798,6 +949,34 @@ fn generate_report_text(
     
     s.push_str("GLOBAL STATS:\n");
     s.push_str(&format!("  Ones Count: {}\n", stats.ones_count));
+
+    s.push_str("\n=== SPECTRAL ANALYSIS REPORT ===\n");
+    s.push_str(&format!("Dataset Size: {}\n", entries.len()));
+    
+    let report_spec = |name: &str, ss: &SpectralStats| -> String {
+        format!("{}:\n  Mean Spectral Power: {:.6}\n  Max Spectral Power: {:.6}\n  Peak/Mean Ratio: {:.2}\n  Peak Frequency Index: {}\n  Peak Normalized Frequency: {:.6}\n\n",
+            name, ss.mean_power, ss.max_power, ss.peak_ratio, ss.peak_freq_idx, ss.peak_freq)
+    };
+    
+    s.push_str(&report_spec("ORIGINAL SEQUENCE", &stats.spectral_original));
+    s.push_str(&report_spec("SHUFFLED BASELINE", &stats.spectral_shuffled));
+    s.push_str(&report_spec("SYNTHETIC IID BASELINE", &stats.spectral_synthetic));
+    
+    s.push_str("INTERPRETATION:\n");
+    s.push_str("  If Original Peak/Mean ≈ Baselines → No periodic structure.\n");
+    s.push_str("  If Original Peak/Mean >> Baselines → Possible periodic component.\n");
+    
+    let ratio = stats.spectral_original.peak_ratio;
+    let note = if ratio < 5.0 {
+        "No statistically significant spectral peak detected."
+    } else if ratio < 10.0 {
+        "Weak spectral irregularity (likely noise)."
+    } else {
+        "Strong spectral peak detected — investigate further."
+    };
+    s.push_str(&format!("  NOTE: {}\n", note));
+
+    s.push_str("=== END SPECTRAL REPORT ===\n\n");
     s.push_str(&format!("  Zeros Count: {}\n", stats.zeros_count));
     s.push_str(&format!("  Ratio Ones: {:.4}\n", stats.ratio_ones));
     s.push_str(&format!("  Max Run 0: {}\n", stats.max_run_0));
@@ -851,6 +1030,77 @@ fn generate_report_text(
         }
     }
     s
+}
+
+fn compute_spectral(input_signal: &[f64]) -> SpectralStats {
+    let n = input_signal.len();
+    if n == 0 {
+        return SpectralStats {
+            spectrum: vec![],
+            mean_power: 0.0,
+            max_power: 0.0,
+            peak_ratio: 0.0,
+            peak_freq_idx: 0,
+            peak_freq: 0.0,
+        };
+    }
+
+    // Apply Hann Window
+    let mut signal = input_signal.to_vec();
+    for i in 0..n {
+        let w = 0.5 * (1.0 - (2.0 * std::f64::consts::PI * i as f64 / n as f64).cos());
+        signal[i] *= w;
+    }
+
+    // Compute FFT
+    let mut planner = FftPlanner::new();
+    let fft = planner.plan_fft_forward(n);
+    let mut buffer: Vec<Complex<f64>> = signal
+        .iter()
+        .map(|&x| Complex { re: x, im: 0.0 })
+        .collect();
+    fft.process(&mut buffer);
+
+    // Compute Power Spectrum (start at 1 to skip DC)
+    let half = n / 2;
+    let spectrum: Vec<f64> = buffer.iter()
+        .take(half)
+        .skip(1) // Skip DC
+        .map(|c| c.norm_sqr() / n as f64)
+        .collect();
+
+    if spectrum.is_empty() {
+        return SpectralStats {
+             spectrum: vec![],
+             mean_power: 0.0, 
+             max_power: 0.0, 
+             peak_ratio: 0.0, 
+             peak_freq_idx: 0, 
+             peak_freq: 0.0 
+        };
+    }
+
+    let sum_power: f64 = spectrum.iter().sum();
+    let mean_power = sum_power / spectrum.len() as f64;
+    let max_power = spectrum.iter().cloned().fold(0.0, f64::max);
+    let peak_ratio = if mean_power > 0.0 { max_power / mean_power } else { 0.0 };
+    
+    let (peak_idx, _) = spectrum.iter().enumerate()
+        .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
+        .unwrap(); // accepted distinct from DC (index 0 in spectrum is actually bin 1)
+    
+    // spectrum[i] corresponds to bin (i+1)
+    let actual_bin = peak_idx + 1;
+    let peak_freq = actual_bin as f64 / n as f64;
+
+    SpectralStats {
+        spectrum,
+        mean_power,
+        max_power,
+        peak_ratio,
+        peak_freq_idx: actual_bin,
+        peak_freq,
+    }
 }
 
 fn combo_attr(ui: &mut egui::Ui, current: &mut Attribute, id: &str) {
