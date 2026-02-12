@@ -83,11 +83,12 @@ impl eframe::App for DiffractionApp {
                     ui,
                     &mut self.show_help,
                     "Diffraction Help",
-                    "FFT of composite signal built from decomposition frequencies.",
+                    "Checks if primes use components in a rhythmic, repeating pattern.",
                     &[
-                        ("Sharp Peaks", "Real periodic structure in component usage."),
-                        ("Broad Hump", "Noise or weak quasi-periodicity."),
-                        ("Peak Frequency", "Corresponds to a recurring pattern length."),
+                        ("Top Panel", "The 'melody' of component usage over time."),
+                        ("Bottom Panel", "The 'frequency spectrum' of that melody."),
+                        ("Peaks (Red)", "Strong rhythms. A peak at X means a pattern repeats every 1/X primes."),
+                        ("No Peaks?", "Behavior is 'aperiodic' or random-like (common for primes)."),
                     ]
                 );
             });

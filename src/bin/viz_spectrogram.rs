@@ -88,11 +88,13 @@ impl eframe::App for SpectrogramApp {
                     ui,
                     &mut self.show_help,
                     "Spectrogram Help",
-                    "Base Prime usage (X) over Time (Y).",
+                    "A 'barcode' showing which base primes are used over time.",
                     &[
-                        ("Vertical Bands", "A base prime is used consistently (workhorse)."),
-                        ("Horizontal Gaps", "Ranges where few base primes are needed."),
-                        ("Drift", "Active basis changes over time."),
+                        ("X-Axis", "Base primes (1, 2, 3, 5...). Left = small, Right = large."),
+                        ("Y-Axis", "Time (Sequence of primes). Top -> Bottom."),
+                        ("Vertical Bands", "A base prime that is ALWAYS used (a stable building block)."),
+                        ("Broken Bands", "A base prime that is used intermittently."),
+                        ("Drift", "Bands shifting right means larger bases are taking over."),
                     ]
                 );
             });
