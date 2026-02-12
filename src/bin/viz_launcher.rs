@@ -50,43 +50,85 @@ impl eframe::App for LauncherApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Prime Basis Visualization Dashboard");
             ui.add_space(5.0);
-            
+
             ui.label(egui::RichText::new(&self.status).color(egui::Color32::LIGHT_BLUE));
-            ui.add_space(15.0);
+            ui.add_space(10.0);
 
-            let available_width = ui.available_width();
-            let _col_width = (available_width - 20.0) / 2.0;
-
-            ui.columns(2, |cols| {
-                // Phase 2 Column
-                cols[0].vertical(|ui| {
-                    ui.heading("Phase 2: Structure");
-                    ui.add_space(10.0);
-                    
-                    self.tool_card(ui, "Phase Space Plot", "viz_phase_space", "Gap vs Component stats");
-                    self.tool_card(ui, "Modular Starfield", "viz_starfield", "Polar plot of residues");
-                    self.tool_card(ui, "Resonance Cylinder", "viz_resonance", "Animated modulus sweep");
-                    self.tool_card(ui, "Compression Sig", "viz_compression", "Bit efficiency analysis");
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                // --- Phase 1: Distributions ---
+                ui.heading("Phase 1: Distributions");
+                ui.add_space(5.0);
+                ui.columns(2, |cols| {
+                    self.tool_card(&mut cols[0], "📊 Distributions", "viz_distributions", "Component & gap histograms");
+                    self.tool_card(&mut cols[1], "🌊 Gap Waveform", "viz_gap_waveform", "Gap sizes colored by complexity");
+                });
+                ui.columns(2, |cols| {
+                    self.tool_card(&mut cols[0], "📈 Support Scores", "viz_support_scores", "Base prime usage frequency");
+                    self.tool_card(&mut cols[1], "📋 Summary", "viz_summary", "Key metrics printed to terminal");
                 });
 
-                // Phase 3 Column
-                cols[1].vertical(|ui| {
-                    ui.heading("Phase 3: Patterns");
-                    ui.add_space(10.0);
-                    
-                    self.tool_card(ui, "Comb Spectrogram", "viz_spectrogram", "Basis usage over time");
-                    self.tool_card(ui, "Spectral Barcode", "viz_barcode", "Discrete usage stripes");
-                    self.tool_card(ui, "Vector Distance", "viz_vector_distance", "Structural change rate");
-                    self.tool_card(ui, "PCA Embedding", "viz_pca", "High-dim projection");
+                ui.add_space(10.0);
+                ui.separator();
+                ui.add_space(5.0);
+
+                // --- Phase 2: Structure ---
+                ui.heading("Phase 2: Structure");
+                ui.add_space(5.0);
+                ui.columns(2, |cols| {
+                    self.tool_card(&mut cols[0], "🌀 Phase Space Plot", "viz_phase_space", "Gap × components × next gap scatter");
+                    self.tool_card(&mut cols[1], "📐 Compression Signature", "viz_compression", "Bit cost vs log₂(p)");
                 });
-            });
-            
-            ui.add_space(20.0);
-            ui.separator();
-            ui.label("Existing Phase 1 Tools:");
-            ui.horizontal(|ui| {
-                if ui.button("Distributions").clicked() { self.launch("viz_distributions"); }
-                if ui.button("Gap Waveform").clicked() { self.launch("viz_gap_waveform"); }
+
+                ui.add_space(10.0);
+                ui.separator();
+                ui.add_space(5.0);
+
+                // --- Phase 3: Modular ---
+                ui.heading("Phase 3: Modular");
+                ui.add_space(5.0);
+                ui.columns(2, |cols| {
+                    self.tool_card(&mut cols[0], "⭐ Modular Starfield", "viz_starfield", "Polar plot of p mod M residues");
+                    self.tool_card(&mut cols[1], "🎯 Resonance Cylinder", "viz_resonance", "Animated modulus sweep 2→300");
+                });
+
+                ui.add_space(10.0);
+                ui.separator();
+                ui.add_space(5.0);
+
+                // --- Phase 4: Temporal ---
+                ui.heading("Phase 4: Temporal Patterns");
+                ui.add_space(5.0);
+                ui.columns(2, |cols| {
+                    self.tool_card(&mut cols[0], "🎹 Comb Spectrogram", "viz_spectrogram", "Base prime usage heatmap over time");
+                    self.tool_card(&mut cols[1], "🔬 Spectral Barcode", "viz_barcode", "Absorption-line style usage stripes");
+                });
+
+                ui.add_space(10.0);
+                ui.separator();
+                ui.add_space(5.0);
+
+                // --- Phase 5: Geometric ---
+                ui.heading("Phase 5: Geometric");
+                ui.add_space(5.0);
+                ui.columns(2, |cols| {
+                    self.tool_card(&mut cols[0], "📏 Vector Distance", "viz_vector_distance", "Successive basis vector distances");
+                    self.tool_card(&mut cols[1], "🧬 PCA Embedding", "viz_pca", "High-dim projection to 2D/3D");
+                });
+
+                ui.add_space(10.0);
+                ui.separator();
+                ui.add_space(5.0);
+
+                // --- Phase 6: Spectral & Relational ---
+                ui.heading("Phase 6: Spectral & Relational");
+                ui.add_space(5.0);
+                ui.columns(3, |cols| {
+                    self.tool_card(&mut cols[0], "💎 Diffraction", "viz_diffraction", "FFT interference patterns");
+                    self.tool_card(&mut cols[1], "🚶 3D Vector Walk", "viz_vector_walk", "Cumulative trajectory in basis-space");
+                    self.tool_card(&mut cols[2], "🕸 Dependency Network", "viz_network", "Force-directed co-occurrence graph");
+                });
+
+                ui.add_space(10.0);
             });
         });
     }
